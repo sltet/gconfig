@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+#
+# gcloud(1) is a utility to manage and switch between gcloud contexts.
+
+CONFIG_FILE=$HOME/.config/gcloud/application_default_credentials.json
+
+validate_brew(){
+    if ! command -v brew >> /dev/null ;
+    then
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && \
+        echo '# Set PATH, MANPATH, etc., for Homebrew.' >> /Users/$USER/.zprofile && \
+        echo 'eval $(/opt/homebrew/bin/brew shellenv)' >> /Users/$USER/.zprofile
+    fi
+}   
+
+validate_gcloud(){
+    if ! command -v gcloud >> /dev/null ;
+    then
+        brew install --cask google-cloud-sdk
+    fi
+}
+
+validate_dependencies(){
+    validate_brew
+    validate_gcloud
+}
+
+list_configurations(){
+    gcloud config configurations list
+}
+
+activate_configuration(){
+    CREDS_FILE=$HOME/.config/gcloud/"${1}_credentials.json"
+
+    if [ ! -f $CREDS_FILE ]; then
+        ln -sfn $CREDS_FILE $CONFIG_FILE
+        gcloud auth application-default login
+        gcloud config configurations activate "${1}"
+    else
+        ln -sfn $CREDS_FILE $CONFIG_FILE
+        gcloud config configurations activate "${1}"
+    fi
+}
+
+rename_configuration(){
+    CREDS_FILE=$HOME/.config/gcloud/"${1}_credentials.json"
+    if [[ "${1}" -eq "${2}" ]]; then
+        exit 1
+    else 
+        if [ -f $CREDS_FILE ]; then
+            mv $CREDS_FILE $HOME/.config/gcloud/"${2}_credentials.json"
+            ln -sfn $CREDS_FILE $CONFIG_FILE
+            $(gcloud config configurations rename "${1}" --new-name="${2}")
+        else 
+            ln -sfn $CREDS_FILE $CONFIG_FILE
+            gcloud auth application-default login
+            $(gcloud config configurations rename "${1}" --new-name="${2}")
+        fi
+    fi
+}
+
+usage() {
+    local SELF
+    SELF="gconfig"
+    if [[ "$(basename "$0")" == gconfig-* ]]; then # invoked as plugin
+        SELF="gcloud config configurations list"
+    fi
+
+	 cat <<EOF
+USAGE:
+$SELF                       : list the configurations
+$SELF <NAME>                : activate the configuration <NAME>
+$SELF <NEW_NAME>=<NAME>     : rename configuration <NAME> to <NEW_NAME>
+EOF
+}
+
+main() {
+    validate_dependencies
+
+    if [[ "$#" -eq 0 ]]; then
+        list_configurations
+
+    elif [[ "$#" -eq 1 ]]; then
+        if [[ "${1}" =~ (.+)=(.+) ]]; then
+            rename_configuration "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+        else
+            activate_configuration "${1}"
+        fi 
+    fi 
+
+}
+
+main "$@"
